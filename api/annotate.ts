@@ -93,7 +93,8 @@ interface CreateLabelInput {
 
 interface SetLabelsForHighlightInput {
   highlightId: string;
-  labelIds: string[];
+  labelIds?: string[];
+  labels?: CreateLabelInput[];
 }
 
 // 主函数：处理 webhook 请求
@@ -189,8 +190,8 @@ export default async (req: Request): Promise<Response> => {
     // 获取新创建的标签 ID
     const newLabelId = createLabelResponse.data.createLabel.label.id;
 
-    // 准备设置高亮标签的 GraphQL mutation
-    const setLabelsForHighlightMutation = {
+    // 准备两种设置高亮标签的 GraphQL mutation
+    const setLabelsForHighlightMutationWithIds = {
       query: `mutation SetLabelsForHighlight($input: SetLabelsForHighlightInput!) {
         setLabelsForHighlight(input: $input) {
           ... on SetLabelsForHighlightSuccess {
@@ -216,30 +217,70 @@ export default async (req: Request): Promise<Response> => {
       },
     };
 
-    // 发送设置高亮标签请求
-    console.log("准备设置高亮标签...");
-    console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));
-    const setLabelsRequest = await fetch(
+    const setLabelsForHighlightMutationWithLabels = {
+      query: `mutation SetLabelsForHighlight($input: SetLabelsForHighlightInput!) {
+        setLabelsForHighlight(input: $input) {
+          ... on SetLabelsForHighlightSuccess {
+            highlight {
+              id
+              labels {
+                id
+                name
+                color
+              }
+            }
+          }
+          ... on SetLabelsForHighlightError {
+            errorCodes
+          }
+        }
+      }`,
+      variables: {
+        input: {
+          highlightId: highlight.id,
+          labels: [{
+            name: labelName,
+            color: createLabelMutation.variables.input.color,
+            description: createLabelMutation.variables.input.description,
+          }],
+        } as SetLabelsForHighlightInput,
+      },
+    };
+
+    // 尝试使用 labelIds 设置高亮标签
+    console.log("准备使用 labelIds 设置高亮标签...");
+    console.log("设置高亮标签请求内容 (labelIds):", JSON.stringify(setLabelsForHighlightMutationWithIds, null, 2));
+    const setLabelsRequestWithIds = await fetch(
       "https://api-prod.omnivore.app/api/graphql",
       {
         method: "POST",
         headers: omnivoreHeaders,
-        body: JSON.stringify(setLabelsForHighlightMutation),
+        body: JSON.stringify(setLabelsForHighlightMutationWithIds),
       }
     );
-    const setLabelsResponse = await setLabelsRequest.json();
-    console.log(`设置高亮标签的响应:`, JSON.stringify(setLabelsResponse, null, 2));
+    const setLabelsResponseWithIds = await setLabelsRequestWithIds.json();
+    console.log(`设置高亮标签的响应 (labelIds):`, JSON.stringify(setLabelsResponseWithIds, null, 2));
 
-    // 检查设置标签是否成功
-    if (setLabelsResponse.errors) {
-      console.error("设置高亮标签时出错:", setLabelsResponse.errors);
-      // 尝试获取更多错误信息
-      const errorDetails = setLabelsResponse.errors[0]?.extensions?.exception?.stacktrace;
-      if (errorDetails) {
-        console.error("错误详情:", errorDetails);
+    // 如果使用 labelIds 失败，尝试使用 labels
+    if (setLabelsResponseWithIds.errors) {
+      console.log("使用 labelIds 设置高亮标签失败，尝试使用 labels...");
+      console.log("设置高亮标签请求内容 (labels):", JSON.stringify(setLabelsForHighlightMutationWithLabels, null, 2));
+      const setLabelsRequestWithLabels = await fetch(
+        "https://api-prod.omnivore.app/api/graphql",
+        {
+          method: "POST",
+          headers: omnivoreHeaders,
+          body: JSON.stringify(setLabelsForHighlightMutationWithLabels),
+        }
+      );
+      const setLabelsResponseWithLabels = await setLabelsRequestWithLabels.json();
+      console.log(`设置高亮标签的响应 (labels):`, JSON.stringify(setLabelsResponseWithLabels, null, 2));
+
+      // 检查使用 labels 的设置是否成功
+      if (setLabelsResponseWithLabels.errors) {
+        console.error("设置高亮标签时出错 (labels):", setLabelsResponseWithLabels.errors);
+        return new Response(`设置高亮标签失败 (labelIds 和 labels 均失败): ${JSON.stringify(setLabelsResponseWithLabels.errors)}. 请检查服务器日志以获取更多信息。`, { status: 500 });
       }
-      // 返回更详细的错误信息
-      return new Response(`设置高亮标签失败: ${JSON.stringify(setLabelsResponse.errors)}. 请检查服务器日志以获取更多信息。`, { status: 500 });
     }
 
     // 返回成功响应
