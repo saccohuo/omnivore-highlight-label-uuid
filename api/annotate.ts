@@ -91,9 +91,9 @@ interface CreateLabelInput {
   description?: string;
 }
 
-interface AddLabelToHighlightInput {
+interface SetLabelsForHighlightInput {
   highlightId: string;
-  label: string;
+  labelIds: string[];
 }
 
 // 主函数：处理 webhook 请求
@@ -186,15 +186,16 @@ export default async (req: Request): Promise<Response> => {
       return new Response(`创建标签失败: ${JSON.stringify(createLabelResponse.errors)}`, { status: 500 });
     }
 
-    // 准备将标签添加到高亮的 GraphQL mutation
-    const addLabelToHighlightMutation = {
-      query: `mutation AddLabelToHighlight($input: AddLabelToHighlightInput!) {
-        addLabelToHighlight(input: $input) {操作：字符串;
-          ... on AddLabelToHighlightSuccess {
+    // 获取新创建的标签 ID
+    const newLabelId = createLabelResponse.data.createLabel.label.id;
+
+    // 准备设置高亮标签的 GraphQL mutation
+    const setLabelsForHighlightMutation = {
+      query: `mutation SetLabelsForHighlight($input: SetLabelsForHighlightInput!) {
+        setLabelsForHighlight(input: $input) {
+          ... on SetLabelsForHighlightSuccess {
             highlight {
               id
-              type
-              annotation
               labels {
                 id
                 name
@@ -202,7 +203,7 @@ export default async (req: Request): Promise<Response> => {
               }
             }
           }
-          ... on AddLabelToHighlightError {
+          ... on SetLabelsForHighlightError {
             errorCodes
           }
         }
@@ -210,33 +211,40 @@ export default async (req: Request): Promise<Response> => {
       variables: {
         input: {
           highlightId: highlight.id,
-          label: labelName,
-        } as AddLabelToHighlightInput,
+          labelIds: [newLabelId],
+        } as SetLabelsForHighlightInput,
       },
     };
 
-    // 发送添加标签到高亮请求
-    console.log("准备将标签添加到高亮...");
-    const addLabelRequest = await fetch(
+    // 发送设置高亮标签请求
+    console.log("准备设置高亮标签...");
+    console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));
+    const setLabelsRequest = await fetch(
       "https://api-prod.omnivore.app/api/graphql",
       {
         method: "POST",
         headers: omnivoreHeaders,
-        body: JSON.stringify(addLabelToHighlightMutation),
+        body: JSON.stringify(setLabelsForHighlightMutation),
       }
     );
-    const addLabelResponse = await addLabelRequest.json();
-    console.log(`将标签添加到高亮的响应:`, JSON.stringify(addLabelResponse, null, 2));
+    const setLabelsResponse = await setLabelsRequest.json();
+    console.log(`设置高亮标签的响应:`, JSON.stringify(setLabelsResponse, null, 2));
 
-    // 检查添加标签是否成功
-    if (addLabelResponse.errors) {
-      console.error("将标签添加到高亮时出错:", addLabelResponse.errors);
-      return new Response(`将标签添加到高亮失败: ${JSON.stringify(addLabelResponse.errors)}`, { status: 500 });
+    // 检查设置标签是否成功
+    if (setLabelsResponse.errors) {
+      console.error("设置高亮标签时出错:", setLabelsResponse.errors);
+      // 尝试获取更多错误信息
+      const errorDetails = setLabelsResponse.errors[0]?.extensions?.exception?.stacktrace;
+      if (errorDetails) {
+        console.error("错误详情:", errorDetails);
+      }
+      // 返回更详细的错误信息
+      return new Response(`设置高亮标签失败: ${JSON.stringify(setLabelsResponse.errors)}. 请检查服务器日志以获取更多信息。`, { status: 500 });
     }
 
     // 返回成功响应
-    console.log(`成功将标签 ${labelName} 添加到高亮。`);
-    return new Response(`已将标签 ${labelName} 添加到高亮。`);
+    console.log(`成功将标签 ${labelName} 设置到高亮。`);
+    return new Response(`已将标签 ${labelName} 设置到高亮。`);
 
   } catch (error) {
     // 捕获并记录任何未预期的错误
