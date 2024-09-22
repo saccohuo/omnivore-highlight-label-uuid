@@ -67,7 +67,6 @@ export const config = {
                                                       | 结束   |
                                                       +--------+
 */
-
 // 接口定义
 interface Highlight {
   id: string;
@@ -99,12 +98,11 @@ interface SetLabelsForHighlightInput {
 // 辅助函数：延迟执行
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-
 // 主函数：处理 webhook 请求
 export default async (req: Request): Promise<Response> => {
   try {
     // 解析 webhook 负载
-    const body = await req.json();
+    const body = await req.json() as WebhookPayload;
     console.log("收到 webhook 负载:", JSON.stringify(body, null, 2));
 
     // 检查是否为 'created' 事件
@@ -212,14 +210,15 @@ export default async (req: Request): Promise<Response> => {
           }
         }
       }`,
-      variables: {+---------------------------+     +---------------------------+
+      variables: {
         input: {
           highlightId: highlight.id,
           labelIds: [newLabelId],
         } as SetLabelsForHighlightInput,
       },
     };
-// 设置重试次数
+
+    // 设置重试次数
     const maxRetries = 3;
     let retries = 0;
     let success = false;
@@ -230,7 +229,7 @@ export default async (req: Request): Promise<Response> => {
         console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));
 
         const setLabelsRequest = await fetch(
-          "https://api-prod.omnivore.app/api/graphql",“https://api-prod.omnivore.app/api/graphql”，
+          "https://api-prod.omnivore.app/api/graphql",
           {
             method: "POST",
             headers: omnivoreHeaders,
@@ -271,5 +270,4 @@ export default async (req: Request): Promise<Response> => {
       { status: 500 }
     );
   }
-};
 };
