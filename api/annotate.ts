@@ -172,14 +172,14 @@ export default async (req: Request): Promise<Response> => {
     };
 
     // 设置重试次数
-    const maxRetries = 3;+---------------------------+
+    const maxRetries = 3;
     let retries = 0;
     let success = false;
 
     while (retries < maxRetries && !success) {
       try {
         console.log(`尝试设置高亮标签 (尝试 ${retries + 1}/${maxRetries})...`);
-        console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));
+        console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));|突变 |
         
         const setLabelsRequest = await fetch(
           "https://api-prod.omnivore.app/api/graphql",
