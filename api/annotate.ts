@@ -5,7 +5,7 @@ export const config = {
   runtime: "edge",
 };
 
-// 更新后的 ASCII 流程图
+// 流程图：omnivore-webhook-flow-detailed
 /*
 +--------+     +------------------------+     +---------------------------+
 | 开始   | --> | 解析 webhook 负载      | --> | 是否为 'created' 事件?    |
@@ -27,41 +27,45 @@ export const config = {
                                               | 创建新的 UUID 标签        |
                                               +---------------------------+
                                                           |
-                                                          vv
+                                                          v
                                               +---------------------------+
-                                              | 准备设置标签的GraphQL     |
+                                              | 准备创建标签的GraphQL     |
                                               | mutation                  |
                                               +---------------------------+
                                                           |
                                                           v
                                               +---------------------------+
-                                              | 发送设置标签请求          |
+                                              | 发送创建标签请求          |
+                                              +---------------------------+
+                                                          |
+                              +--------------------+      |
+                              | 返回: 创建标签失败 | <--- | 否
+                              +--------------------+      |
+                                                          | 是
+                                                          v
+                                              +---------------------------+
+                                              | 准备将标签添加到高亮的    |
+                                              | GraphQL mutation          |
                                               +---------------------------+
                                                           |
                                                           v
                                               +---------------------------+
-                                              | 是否成功?                 |
+                                              | 发送添加标签到高亮请求    |
                                               +---------------------------+
-                                                 |                 |
-                                                 | 是              | 否
-                                                 v                 v
-                                     +----------------------+ +-----------------+
-                                     | 返回: 成功设置标签   | | 重试 (最多3次)  |
-                                     +----------------------+ +-----------------+
-                                                                      |
-                                                                      v
-                                                              +------------------+
-                                                              | 是否所有重试     |
-                                                              | 都失败?          |
-                                                              +------------------+
-                                                                 |            |
-                                                                 | 是         | 否
-                                                                 v            |
-                                                     +--------------------+   |
-                                                     | 返回: 设置标签失败 |   |
-                                                     +--------------------+   |
-                                                                              v
-                                                                           结束
+                                                          |
+                              +--------------------+      |
+                              | 返回: 添加标签失败 | <--- | 否
+                              +--------------------+      |
+                                                          | 是
+                                                          v
+                                              +---------------------------+
+                                              | 返回: 成功添加标签        |
+                                              +---------------------------+
+                                                          |
+                                                          v
+                                                      +--------+
+                                                      | 结束   |
+                                                      +--------+
 */
 
 // 接口定义
@@ -89,11 +93,12 @@ interface CreateLabelInput {
 
 interface SetLabelsForHighlightInput {
   highlightId: string;
-  labels: CreateLabelInput[];
+  labelIds: string[];
 }
 
 // 辅助函数：延迟执行
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 
 // 主函数：处理 webhook 请求
 export default async (req: Request): Promise<Response> => {
@@ -140,6 +145,54 @@ export default async (req: Request): Promise<Response> => {
       Authorization: omnivoreApiKey,
     };
 
+    // 准备创建标签的 GraphQL mutation
+    const createLabelMutation = {
+      query: `mutation CreateLabel($input: CreateLabelInput!) {
+        createLabel(input: $input) {
+          ... on CreateLabelSuccess {
+            label {
+              id
+              name
+              color
+              description
+            }
+          }
+          ... on CreateLabelError {
+            errorCodes
+          }
+        }
+      }`,
+      variables: {
+        input: {
+          name: labelName,
+          color: "#" + Math.floor(Math.random()*16777215).toString(16), // 随机颜色
+          description: "自动生成的 UUID 标签",
+        } as CreateLabelInput,
+      },
+    };
+
+    // 发送创建标签请求
+    console.log("准备创建标签...");
+    const createLabelRequest = await fetch(
+      "https://api-prod.omnivore.app/api/graphql",
+      {
+        method: "POST",
+        headers: omnivoreHeaders,
+        body: JSON.stringify(createLabelMutation),
+      }
+    );
+    const createLabelResponse = await createLabelRequest.json();
+    console.log(`创建标签响应:`, JSON.stringify(createLabelResponse, null, 2));
+
+    // 检查标签创建是否成功
+    if (createLabelResponse.errors) {
+      console.error("创建标签时出错:", createLabelResponse.errors);
+      return new Response(`创建标签失败: ${JSON.stringify(createLabelResponse.errors)}`, { status: 500 });
+    }
+
+    // 获取新创建的标签 ID
+    const newLabelId = createLabelResponse.data.createLabel.label.id;
+
     // 准备设置高亮标签的 GraphQL mutation
     const setLabelsForHighlightMutation = {
       query: `mutation SetLabelsForHighlight($input: SetLabelsForHighlightInput!) {
@@ -159,19 +212,14 @@ export default async (req: Request): Promise<Response> => {
           }
         }
       }`,
-      variables: {
+      variables: {+---------------------------+     +---------------------------+
         input: {
           highlightId: highlight.id,
-          labels: [{
-            name: labelName,
-            color: "#" + Math.floor(Math.random()*16777215).toString(16), // 随机颜色
-            description: "自动生成的 UUID 标签",
-          }],
+          labelIds: [newLabelId],
         } as SetLabelsForHighlightInput,
       },
     };
-
-    // 设置重试次数
+// 设置重试次数
     const maxRetries = 3;
     let retries = 0;
     let success = false;
@@ -180,7 +228,7 @@ export default async (req: Request): Promise<Response> => {
       try {
         console.log(`尝试设置高亮标签 (尝试 ${retries + 1}/${maxRetries})...`);
         console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));
-        
+
         const setLabelsRequest = await fetch(
           "https://api-prod.omnivore.app/api/graphql",“https://api-prod.omnivore.app/api/graphql”，
           {
@@ -189,7 +237,7 @@ export default async (req: Request): Promise<Response> => {
             body: JSON.stringify(setLabelsForHighlightMutation),
           }
         );
-        
+
         const setLabelsResponse = await setLabelsRequest.json();
         console.log(`设置高亮标签的响应:`, JSON.stringify(setLabelsResponse, null, 2));
 
