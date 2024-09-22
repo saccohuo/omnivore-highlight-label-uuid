@@ -27,7 +27,7 @@ export const config = {
                                               | 创建新的 UUID 标签        |
                                               +---------------------------+
                                                           |
-                                                          v
+                                                          vv
                                               +---------------------------+
                                               | 准备设置标签的GraphQL     |
                                               | mutation                  |
@@ -179,10 +179,10 @@ export default async (req: Request): Promise<Response> => {
     while (retries < maxRetries && !success) {
       try {
         console.log(`尝试设置高亮标签 (尝试 ${retries + 1}/${maxRetries})...`);
-        console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));|突变 |
+        console.log("设置高亮标签请求内容:", JSON.stringify(setLabelsForHighlightMutation, null, 2));
         
         const setLabelsRequest = await fetch(
-          "https://api-prod.omnivore.app/api/graphql",
+          "https://api-prod.omnivore.app/api/graphql",“https://api-prod.omnivore.app/api/graphql”，
           {
             method: "POST",
             headers: omnivoreHeaders,
